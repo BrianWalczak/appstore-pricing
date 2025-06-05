@@ -1,0 +1,30 @@
+{
+  "name": "appstore-pricing",
+  "version": "1.1.0",
+  "description": "Compare App Store in-app purchase prices across countries in your local currency, and see how much more you're paying compared to other regions.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BrianWalczak/appstore-pricing.git"
+  },
+  "keywords": [
+    "subscriptions",
+    "apple",
+    "icloud",
+    "purchases",
+    "regions"
+  ],
+  "author": "Brian Walczak",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/BrianWalczak/appstore-pricing/issues"
+  },
+  "homepage": "https://github.com/BrianWalczak/appstore-pricing#readme",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "inquirer": "^8.0.0"
+  }
+}
