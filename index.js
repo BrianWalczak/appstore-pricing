@@ -1,8 +1,8 @@
 const countries = require('./lib/countries.json');
-const { getAppInput, getHomeCountry, getHomeCurrency, confirmDetails, selectPurchase } = require('./lib/prompts.js');
+const { getAppInput, getHomeCountry, getHomeCurrency, confirmDetails, selectPurchase, getSearchKeywords } = require('./lib/prompts.js');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chalk = require('chalk');
-const pricing = [];
+let pricing = [];
 
 function getCountryByCode(code) {
     const country = countries.find(country => country.code.toLowerCase() === code.toLowerCase());
@@ -35,15 +35,14 @@ async function checkApplication(appId, code) {
     }
 }
 
-async function checkCountry(appId, code, selectedPurchase) {
+async function checkCountry(appId, code, method, data) {
     try {
-        const data = await checkApplication(appId, code);
-        
-        const purchases = data.relationships['top-in-apps'].data;
+        const appData = await checkApplication(appId, code);
+        const purchases = appData.relationships['top-in-apps'].data;
         let finishCheck = false;
 
         for (const purchase of purchases) {
-            if(purchase.attributes.offerName === selectedPurchase.attributes.offerName) {
+            if((method === 'PURCHASE' && purchase.attributes.offerName === data.attributes.offerName) || (method === 'KEYWORD' && data.some(item => purchase.attributes.name.toLowerCase().includes(item.toLowerCase()))) && !finishCheck) {
                 finishCheck = true;
                 console.log(`${getCountryByCode(code)} → ` + chalk.green(`${purchase.attributes.offers[0].priceFormatted} (${purchase.attributes.offers[0].currencyCode})`));
 
@@ -81,44 +80,40 @@ async function checkConversion(conversion, homeCurrency) {
     return true;
 }
 
-async function interactiveRun() {
-    const appId = await getAppInput();
-    const homeCountry = await getHomeCountry();
 
-    console.log();
-    if(!await confirmDetails()) {
-        console.clear();
-        return interactiveRun();
-    }
-
-    const data = await checkApplication(appId, homeCountry);
-    if(!data || !data?.relationships?.['top-in-apps']?.data || data.relationships['top-in-apps'].data.length === 0) {
-        console.error(chalk.red("It looks like the app you entered doesn't offer any in-app purchases or is not available in your country."));
-        return process.exit(1);
-    }
-
-    const purchases = data.relationships['top-in-apps'].data;
-    const purchase = await selectPurchase(purchases);
-
+async function runCheck(appId, homeCountry, method, data) {
     console.clear();
-    console.log(chalk.yellow("Starting worldwide pricing check for the selected purchase based on your local currency...\n"));
+    console.log(chalk.yellow(`Starting worldwide pricing check for the selected ${method === "PURCHASE" ? "purchase" : method === "KEYWORD" ? "keywords" : ""} based on your local currency...\n`));
     await sleep(2000);
+
+    pricing = []; // reset pricing data
 
     // check if the purchase is available in each country
     for (const country of countries) {
         if(country.code.toLowerCase() !== homeCountry.toLowerCase()) {
-            await checkCountry(appId, country.code, purchase);
+            await checkCountry(appId, country.code, method, data);
         }
     };
 
-    if(pricing.length === 0) {
+    if(pricing.length === 0 && method === "PURCHASE") {
         console.error(
             chalk.yellow("\nHmm, looks like no countries were found with the selected purchase. This could happen for a couple of reasons:\n") +
             `• The app is currently only available in ${getCountryByCode(homeCountry)}.\n` +
             "• The app doesn't offer this in-app purchase for other countries.\n" + 
             "• The app developer could use multiple variants of the app across different regions.\n" +
             "• Most likely, the app developer has separate in-app purchases for different regions, and the one you selected is not available in other countries."
-            );
+        );
+
+        const attempt = await confirmDetails(`Would you like to try again by searching for in-app purchase keywords (${chalk.cyan('EXPERIMENTAL')})?`);
+        if(!attempt) return process.exit(1);
+
+        const keywords = await getSearchKeywords();
+        console.log(chalk.blue('Searching for keywords:'), keywords.join(', '));
+        await sleep(1000);
+
+        return runCheck(appId, homeCountry, 'KEYWORD', keywords);
+    } else if(pricing.length === 0 && method === "KEYWORD") {
+        console.error(chalk.yellow("\nUnfortunately, no countries were found with the selected keywords. Please ensure you entered valid keywords and try again."));
         return process.exit(1);
     } else {
         console.log(chalk.green(`\n\nAll countries have been checked (with ${pricing.length} successful checks).`));
@@ -140,14 +135,36 @@ async function interactiveRun() {
 
             if(await confirmDetails('Would you like to preview the pricing data?')) {
                 console.clear();
-                console.log(chalk.yellow(`-------------- ${purchase.attributes.name} --------------\n`));
-                
+                console.log(chalk.yellow(`-------------- ${method === "PURCHASE" ? data.attributes.name : method === "KEYWORD" ? data.join(', ') : ''} --------------\n`));
+
                 for (const item of pricing) {
                     console.log(`${item.country}: ${item.price} ${item.currency} → ` + chalk.green(`${item[`price${homeCurrency.toUpperCase()}`]} ${homeCurrency.toUpperCase()}`));
                 }
             }
         }
     }
+}
+
+async function interactiveRun() {
+    const appId = await getAppInput();
+    const homeCountry = await getHomeCountry();
+
+    console.log();
+    if(!await confirmDetails()) {
+        console.clear();
+        return interactiveRun();
+    }
+
+    const data = await checkApplication(appId, homeCountry);
+    if(!data || !data?.relationships?.['top-in-apps']?.data || data.relationships['top-in-apps'].data.length === 0) {
+        console.error(chalk.red("It looks like the app you entered doesn't offer any in-app purchases or is not available in your country."));
+        return process.exit(1);
+    }
+
+    const purchases = data.relationships['top-in-apps'].data;
+    const purchase = await selectPurchase(purchases);
+
+    return runCheck(appId, homeCountry, 'PURCHASE', purchase);
 };
 
 console.clear();
