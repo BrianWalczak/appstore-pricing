@@ -81,7 +81,7 @@ async function checkConversion(conversion, homeCurrency) {
     return true;
 }
 
-(async () => {
+async function interactiveRun() {
     const appId = await getAppInput();
     const homeCountry = await getHomeCountry();
 
@@ -106,33 +106,55 @@ async function checkConversion(conversion, homeCurrency) {
 
     // check if the purchase is available in each country
     for (const country of countries) {
-        await checkCountry(appId, country.code, purchase);
+        if(country.code.toLowerCase() !== homeCountry.toLowerCase()) {
+            await checkCountry(appId, country.code, purchase);
+        }
     };
 
-    console.log(chalk.green(`\n\nAll countries have been checked (with ${pricing.length} successful checks).`));
-    const homeCurrency = await getHomeCurrency();
-    const conversion = await getConversionRate(homeCurrency);
-    
-    console.clear();
-    if(!conversion) {
-        console.error(chalk.red("An error occured when retrieving the latest conversion rates. Please ensure you provided a valid currency code."));
-        require('fs').writeFileSync('./pricing.json', JSON.stringify(pricing, null, 2));
-
-        console.log(chalk.yellow('Pricing data saved to pricing.json without conversion rates.'));
+    if(pricing.length === 0) {
+        console.error(
+            chalk.yellow("\nHmm, looks like no countries were found with the selected purchase. This could happen for a couple of reasons:\n") +
+            `• The app is currently only available in ${getCountryByCode(homeCountry)}.\n` +
+            "• The app doesn't offer this in-app purchase for other countries.\n" + 
+            "• The app developer could use multiple variants of the app across different regions.\n" +
+            "• Most likely, the app developer has separate in-app purchases for different regions, and the one you selected is not available in other countries."
+            );
         return process.exit(1);
     } else {
-        await checkConversion(conversion, homeCurrency);
+        console.log(chalk.green(`\n\nAll countries have been checked (with ${pricing.length} successful checks).`));
+        const homeCurrency = await getHomeCurrency();
+        const conversion = await getConversionRate(homeCurrency);
 
-        require('fs').writeFileSync('./pricing.json', JSON.stringify(pricing, null, 2));
-        console.log(chalk.green('Conversion rates have been applied. Updated pricing data has been saved to pricing.json!'));
+        console.clear();
+        if(!conversion) {
+            console.error(chalk.red("An error occured when retrieving the latest conversion rates. Please ensure you provided a valid currency code."));
+            require('fs').writeFileSync('./pricing.json', JSON.stringify(pricing, null, 2));
 
-        if(await confirmDetails('Would you like to preview the pricing data?')) {
-            console.clear();
-            console.log(chalk.yellow(`-------------- ${purchase.attributes.name} --------------\n`));
-            
-            for (const item of pricing) {
-                console.log(`${item.country}: ${item.price} ${item.currency} → ` + chalk.green(`${item[`price${homeCurrency.toUpperCase()}`]} ${homeCurrency.toUpperCase()}`));
+            console.log(chalk.yellow('Pricing data saved to pricing.json without conversion rates.'));
+            return process.exit(1);
+        } else {
+            await checkConversion(conversion, homeCurrency);
+
+            require('fs').writeFileSync('./pricing.json', JSON.stringify(pricing, null, 2));
+            console.log(chalk.green('Conversion rates have been applied. Updated pricing data has been saved to pricing.json!'));
+
+            if(await confirmDetails('Would you like to preview the pricing data?')) {
+                console.clear();
+                console.log(chalk.yellow(`-------------- ${purchase.attributes.name} --------------\n`));
+                
+                for (const item of pricing) {
+                    console.log(`${item.country}: ${item.price} ${item.currency} → ` + chalk.green(`${item[`price${homeCurrency.toUpperCase()}`]} ${homeCurrency.toUpperCase()}`));
+                }
             }
         }
     }
-})();
+};
+
+console.clear();
+console.log(chalk.bold.cyan("appstore-pricing | App Store IAP Comparison"));
+console.log("A CLI utility to search and compare localized pricing for in-app purchases\nacross all App Store regions in your own currency.\n");
+
+console.log(chalk.gray("Made with") + chalk.red(" ♡ ") + chalk.gray("by Briann — https://github.com/BrianWalczak"));
+
+
+interactiveRun();
